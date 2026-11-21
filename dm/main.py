@@ -63,7 +63,8 @@ def main(argv=None):
     if not args.text:
         from .stt import record_utterance, transcribe
 
-    print(f"[campaign: {args.campaign} | {path}]  say 'quit' to end the session.")
+    verb = "type" if args.text else "say"
+    print(f"[campaign: {args.campaign} | {path}]  {verb} 'quit' to end the session.")
     try:
         while True:
             if args.text:

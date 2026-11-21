@@ -20,8 +20,12 @@ if [[ "$ROLE" == "all" || "$ROLE" == "voice" ]]; then
   [[ -d ~/whisper.cpp ]] || git clone https://github.com/ggml-org/whisper.cpp ~/whisper.cpp
   (cd ~/whisper.cpp && sh ./models/download-ggml-model.sh base.en && cmake -B build && cmake --build build -j4 --config Release)
   python3 -m venv ~/dm-venv
-  ~/dm-venv/bin/pip install -r "$(dirname "$0")/../requirements.txt" piper-tts
+  ~/dm-venv/bin/pip install -r "$(dirname "$0")/../requirements-voice.txt"
   mkdir -p ~/voices
   echo ">> Download a Piper voice (.onnx + .onnx.json) into ~/voices, e.g. en_US-lessac-medium, from the rhasspy/piper-voices repo on Hugging Face."
+  echo "Done. Next: arecord -l / aplay -l to confirm your USB audio device, then python -m dm.main --campaign test"
+else
+  python3 -m venv ~/dm-venv
+  ~/dm-venv/bin/pip install -r "$(dirname "$0")/../requirements.txt"
+  echo "Done. Brain-only node ready. Start llama-server and point config.yaml at it."
 fi
-echo "Done. Next: arecord -l / aplay -l to confirm your USB audio device, then python -m dm.main --text"

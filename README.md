@@ -25,29 +25,54 @@ Every DM prompt = short rules + **PARTY block** (HP/AC/class per character) + WO
 
 ## Installation
 
-### Prerequisites
+### Text-only mode (no audio hardware required)
 
-- Raspberry Pi 4 (8 GB recommended) running 64-bit Raspberry Pi OS, **or** any Linux/macOS machine for text-only mode
-- Python 3.10 or later
-- Git
+Text mode works on any Linux, macOS, or Windows machine — no Raspberry Pi, no microphone, no speakers. You type your turns and the DM's replies print to the terminal. This is the fastest way to try the game and develop with it.
 
-### Quick start (automated)
-
-The setup script builds everything and places binaries in the standard locations the default `config.yaml` expects.
+**Requirements:** Python 3.10+, Git, and a running LLM server.
 
 ```bash
 git clone https://github.com/nathan-lalli/MyLittleDungeonMaster
 cd MyLittleDungeonMaster
 
+# Install base dependencies (no audio libs)
+pip install -r requirements.txt
+
+# Build and start the LLM server (see "LLM server" section below)
+# Then play:
+python -m dm.main --text --campaign mygroup --new
+```
+
+That's it. No whisper.cpp, no Piper, no `libportaudio2`.
+
+### Voice mode (Raspberry Pi with mic + speaker)
+
+Voice mode adds Whisper STT and Piper TTS on top of the text-mode stack.
+
+**Additional system packages:**
+
+```bash
+sudo apt install -y libportaudio2 alsa-utils
+```
+
+**Additional Python packages:**
+
+```bash
+pip install -r requirements-voice.txt
+```
+
+**Quick start (automated, Raspberry Pi OS):**
+
+```bash
 # Set ROLE to: all (single Pi), brain (LLM only), or voice (STT/TTS/app only)
 ROLE=all ./scripts/setup_pi.sh
 ```
 
-The script installs system packages, builds llama.cpp and whisper.cpp from source, creates a Python venv, and prints what you still need to do manually (download a model and a voice).
+The script builds llama.cpp and whisper.cpp from source, creates a Python venv with the right requirements for the role, and prints what you still need to do manually (download a model and a voice).
 
-### Manual installation
+### Manual installation (voice mode)
 
-**1. System packages (Raspberry Pi OS / Debian)**
+**1. System packages**
 
 ```bash
 sudo apt update
@@ -60,28 +85,10 @@ sudo apt install -y git build-essential cmake python3-venv python3-pip \
 ```bash
 python3 -m venv ~/dm-venv
 source ~/dm-venv/bin/activate
-pip install -r requirements.txt
-pip install piper-tts          # voice mode only
+pip install -r requirements-voice.txt
 ```
 
-**3. llama.cpp (LLM server)**
-
-```bash
-git clone https://github.com/ggml-org/llama.cpp ~/llama.cpp
-cmake -S ~/llama.cpp -B ~/llama.cpp/build -DCMAKE_BUILD_TYPE=Release
-cmake --build ~/llama.cpp/build --config Release -j4 --target llama-server
-```
-
-**4. Download a GGUF model**
-
-```bash
-mkdir -p ~/models
-# Example: Qwen2.5-1.5B-Instruct Q4_K_M (adjust URL to whichever model you chose)
-wget -O ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
-  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
-```
-
-**5. whisper.cpp (speech-to-text)**
+**3. whisper.cpp (speech-to-text)**
 
 ```bash
 git clone https://github.com/ggml-org/whisper.cpp ~/whisper.cpp
@@ -90,19 +97,18 @@ cmake -B build && cmake --build build -j4 --config Release
 bash ./models/download-ggml-model.sh base.en   # or tiny.en for lower latency
 ```
 
-**6. Piper voice (text-to-speech)**
+**4. Piper voice (text-to-speech)**
 
 ```bash
 mkdir -p ~/voices
 # Download voice model + config from https://huggingface.co/rhasspy/piper-voices
-# Example — en_US lessac medium quality:
 wget -O ~/voices/en_US-lessac-medium.onnx \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
 wget -O ~/voices/en_US-lessac-medium.onnx.json \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
 ```
 
-**7. Verify audio (voice mode only)**
+**5. Verify audio**
 
 ```bash
 arecord -l    # find your USB mic device index
@@ -110,9 +116,27 @@ aplay -l      # find your USB speaker device index
 # If the default device is not your USB interface, set audio.device in config.yaml
 ```
 
+### LLM server (required for both modes)
+
+```bash
+# Build llama.cpp
+git clone https://github.com/ggml-org/llama.cpp ~/llama.cpp
+cmake -S ~/llama.cpp -B ~/llama.cpp/build -DCMAKE_BUILD_TYPE=Release
+cmake --build ~/llama.cpp/build --config Release -j4 --target llama-server
+
+# Download a GGUF model (see Model shortlist below)
+mkdir -p ~/models
+wget -O ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+
+# Start the server
+~/llama.cpp/build/bin/llama-server -m ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  -c 4096 --threads 4 --port 8080
+```
+
 ### Configuration
 
-Copy and edit `config.yaml` for your setup. Key settings:
+Edit `config.yaml` for your setup. Key settings:
 
 ```yaml
 llm:

@@ -1,5 +1,7 @@
+# Core — required for text mode and all tests (no audio hardware needed)
 requests>=2.31
 PyYAML>=6.0
-numpy>=1.24
-sounddevice>=0.4.6      # voice mode only (needs libportaudio2: sudo apt install libportaudio2)
-pytest>=7.0             # dev only
+pytest>=7.0        # dev / CI only
+
+# Voice mode — also install these for mic + speaker support:
+#   pip install -r requirements-voice.txt

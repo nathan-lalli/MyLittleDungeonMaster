@@ -1,0 +1,6 @@
+# Voice mode extras — install on top of requirements.txt
+# System dependency: sudo apt install libportaudio2 alsa-utils
+-r requirements.txt
+numpy>=1.24
+sounddevice>=0.4.6
+piper-tts
