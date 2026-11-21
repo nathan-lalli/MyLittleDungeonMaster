@@ -1,0 +1,16 @@
+# sudo cp scripts/llama-server.service /etc/systemd/system/ && sudo systemctl enable --now llama-server
+# Edit User, the GGUF filename, and --threads (Pi 4 has 4 cores; leave 1 free if this node also runs STT/TTS).
+[Unit]
+Description=llama.cpp server (Dungeon Master brain)
+After=network-online.target
+
+[Service]
+User=pi
+ExecStart=/home/pi/llama.cpp/build/bin/llama-server \
+  -m /home/pi/models/YOUR-MODEL.gguf \
+  --host 0.0.0.0 --port 8080 \
+  -c 4096 --threads 4
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

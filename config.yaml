@@ -1,0 +1,38 @@
+# Dungeon Master config. Everything here can be overridden; missing keys fall back to defaults in dm/config.py.
+# Split across Pis by changing the base_url / url values (see README "Topologies").
+
+llm:
+  base_url: http://127.0.0.1:8080/v1   # llama.cpp `llama-server` (OpenAI-compatible). Point at the "brain" Pi for multi-node.
+  model: local                          # llama-server ignores this; kept for compatibility
+  temperature: 0.8
+  top_p: 0.95
+  max_tokens: 200                       # short replies = lower latency on a Pi 4
+  timeout_s: 300
+  system_suffix: ""                     # Qwen3 only: set to "/no_think" to disable reasoning output
+
+stt:
+  binary: ~/whisper.cpp/build/bin/whisper-cli
+  model: ~/whisper.cpp/models/ggml-base.en.bin   # try ggml-tiny.en.bin if too slow
+  threads: 3
+  remote_url: ""                        # optional: HTTP whisper server on another Pi (not implemented in baseline)
+
+audio:
+  sample_rate: 16000
+  device: null                          # sounddevice input device index/name; null = default
+  vad_energy_threshold: 500             # raise if background noise triggers; lower if speech is missed
+  silence_ms: 900                       # silence that ends an utterance
+  max_utterance_s: 25
+  push_to_talk: false                   # true = press Enter to start/stop recording
+
+tts:
+  enabled: true
+  piper_cmd: ["piper", "--model", "~/voices/en_US-lessac-medium.onnx", "--output-raw"]
+  player_cmd: ["aplay", "-q", "-r", "22050", "-f", "S16_LE", "-t", "raw", "-"]
+  # Optional per-speaker voices, used for [NPC: Name] tagged lines in later phases.
+  voices: {}
+
+memory:
+  campaigns_dir: data/campaigns
+  keep_recent_messages: 8               # verbatim turns kept in the prompt
+  summarize_after: 14                   # when unsummarized messages exceed this, fold the oldest into the summary
+  state_block_chars: 1200               # budget for the NPC/location/quest/fact block in the prompt

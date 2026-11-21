@@ -1,0 +1,5 @@
+requests>=2.31
+PyYAML>=6.0
+numpy>=1.24
+sounddevice>=0.4.6      # voice mode only (needs libportaudio2: sudo apt install libportaudio2)
+pytest>=7.0             # dev only

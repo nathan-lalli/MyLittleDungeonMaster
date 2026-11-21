@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+data/campaigns/*.db
+data/campaigns/*.db.bak
+*.wav
