@@ -23,6 +23,114 @@ mic → [VAD] → whisper.cpp (STT) → Game engine → llama-server (LLM, HTTP)
 
 Every DM prompt = short rules + **PARTY block** (HP/AC/class per character) + WORLD NOTES (structured state, ~1200 chars) + STORY SO FAR (rolling LLM summary) + last ~8 turns verbatim.
 
+## Installation
+
+### Prerequisites
+
+- Raspberry Pi 4 (8 GB recommended) running 64-bit Raspberry Pi OS, **or** any Linux/macOS machine for text-only mode
+- Python 3.10 or later
+- Git
+
+### Quick start (automated)
+
+The setup script builds everything and places binaries in the standard locations the default `config.yaml` expects.
+
+```bash
+git clone https://github.com/nathan-lalli/MyLittleDungeonMaster
+cd MyLittleDungeonMaster
+
+# Set ROLE to: all (single Pi), brain (LLM only), or voice (STT/TTS/app only)
+ROLE=all ./scripts/setup_pi.sh
+```
+
+The script installs system packages, builds llama.cpp and whisper.cpp from source, creates a Python venv, and prints what you still need to do manually (download a model and a voice).
+
+### Manual installation
+
+**1. System packages (Raspberry Pi OS / Debian)**
+
+```bash
+sudo apt update
+sudo apt install -y git build-essential cmake python3-venv python3-pip \
+                    libportaudio2 alsa-utils libcurl4-openssl-dev
+```
+
+**2. Python dependencies**
+
+```bash
+python3 -m venv ~/dm-venv
+source ~/dm-venv/bin/activate
+pip install -r requirements.txt
+pip install piper-tts          # voice mode only
+```
+
+**3. llama.cpp (LLM server)**
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp ~/llama.cpp
+cmake -S ~/llama.cpp -B ~/llama.cpp/build -DCMAKE_BUILD_TYPE=Release
+cmake --build ~/llama.cpp/build --config Release -j4 --target llama-server
+```
+
+**4. Download a GGUF model**
+
+```bash
+mkdir -p ~/models
+# Example: Qwen2.5-1.5B-Instruct Q4_K_M (adjust URL to whichever model you chose)
+wget -O ~/models/qwen2.5-1.5b-instruct-q4_k_m.gguf \
+  https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf
+```
+
+**5. whisper.cpp (speech-to-text)**
+
+```bash
+git clone https://github.com/ggml-org/whisper.cpp ~/whisper.cpp
+cd ~/whisper.cpp
+cmake -B build && cmake --build build -j4 --config Release
+bash ./models/download-ggml-model.sh base.en   # or tiny.en for lower latency
+```
+
+**6. Piper voice (text-to-speech)**
+
+```bash
+mkdir -p ~/voices
+# Download voice model + config from https://huggingface.co/rhasspy/piper-voices
+# Example — en_US lessac medium quality:
+wget -O ~/voices/en_US-lessac-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget -O ~/voices/en_US-lessac-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
+```
+
+**7. Verify audio (voice mode only)**
+
+```bash
+arecord -l    # find your USB mic device index
+aplay -l      # find your USB speaker device index
+# If the default device is not your USB interface, set audio.device in config.yaml
+```
+
+### Configuration
+
+Copy and edit `config.yaml` for your setup. Key settings:
+
+```yaml
+llm:
+  base_url: http://127.0.0.1:8080/v1   # change IP for a separate Brain Pi
+  system_suffix: ""                     # Qwen3 only: set to "/no_think"
+
+stt:
+  model: ~/whisper.cpp/models/ggml-base.en.bin   # swap for ggml-tiny.en.bin if too slow
+
+audio:
+  device: null                          # set to your USB mic device index if needed
+  vad_energy_threshold: 500             # raise if background noise triggers false starts
+  push_to_talk: false                   # set true to use Enter key instead of VAD
+
+tts:
+  piper_cmd: ["piper", "--model", "~/voices/en_US-lessac-medium.onnx", "--output-raw"]
+```
+
 ## Hardware
 
 | Item | Why |
@@ -52,33 +160,95 @@ Whisper: `tiny.en` first (fastest), then `base.en` if accuracy is poor. Characte
 
 TTS: **Piper**, `en_US-lessac-medium` (or `-low` for lower latency). Built for CPU-only boards.
 
-## Setup & run
+## Usage
+
+### 1. Start the LLM server
+
+On the Brain Pi (or locally for a single-node setup):
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start the LLM server (Brain Pi or locally)
-~/llama.cpp/build/bin/llama-server -m ~/models/YOUR.gguf -c 4096 --threads 4 --port 8080
-
-# Benchmark models before committing to one
-python scripts/bench_llm.py
-
-# Text mode (no audio — good for first run / testing)
-python -m dm.main --text --campaign mygroup --new "haunted coastal village"
-
-# Voice mode
-python -m dm.main --campaign mygroup
-
-# List saved campaigns
-python -m dm.main --list
-
-# Start fresh (backs up existing campaign to .db.bak first)
-python -m dm.main --campaign mygroup --new
-
-# Run tests
-python -m pytest
+~/llama.cpp/build/bin/llama-server \
+  -m ~/models/YOUR-MODEL.gguf \
+  -c 4096 \
+  --threads 4 \
+  --port 8080
 ```
+
+Leave this running. It stays up between sessions — campaigns reconnect automatically.
+
+Optionally install it as a systemd service so it starts on boot:
+
+```bash
+sudo cp scripts/llama-server.service /etc/systemd/system/
+# Edit the file to set your model path, then:
+sudo systemctl enable --now llama-server
+```
+
+### 2. Benchmark before committing to a model
+
+```bash
+python scripts/bench_llm.py
+```
+
+This measures tokens/second and time-to-first-token for your model. Aim for ≥3 tok/s for a playable experience.
+
+### 3. First run — text mode (no audio required)
+
+Good for verifying the LLM connection and trying the game before touching audio:
+
+```bash
+source ~/dm-venv/bin/activate
+python -m dm.main --text --campaign mygroup --new "cursed jungle temple"
+```
+
+`--new` starts a fresh campaign with that theme and saves it. Omit a theme for a random one.
+
+### 4. Voice mode
+
+```bash
+python -m dm.main --campaign mygroup
+```
+
+The app listens for speech, transcribes with Whisper, narrates with the LLM, and speaks with Piper — all automatically. Say **"quit"** to end the session. Progress is saved after every turn.
+
+### 5. Multiple campaigns
+
+Each `--campaign` name gets its own SQLite file. Run with a different name for a different group:
+
+```bash
+python -m dm.main --campaign tuesday-group
+python -m dm.main --campaign thursday-group
+```
+
+List all saved campaigns:
+
+```bash
+python -m dm.main --list
+```
+
+Start a campaign over (previous state is backed up to `.db.bak`):
+
+```bash
+python -m dm.main --campaign tuesday-group --new
+```
+
+### 6. Character creation
+
+Once a session is running, say:
+
+> *"Create a new character"*
+
+The DM walks each player through name → race → class → subclass → background → ability scores → skills → personality. For classes with Open5e data (cleric, wizard, warlock, etc.) it fetches and reads out the subclass description. When done the character is saved to the campaign and injected into the DM's context automatically.
+
+### 7. Run tests
+
+```bash
+python -m pytest
+# or verbose:
+python -m pytest -v
+```
+
+48 tests run without a Pi, audio hardware, or a live LLM.
 
 ## Voice commands
 
